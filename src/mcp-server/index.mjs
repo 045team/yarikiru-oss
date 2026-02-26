@@ -418,21 +418,31 @@ async function callYarikiruApi(operation, args) {
 // MCP Server Setup
 // ============================================
 
+import express from 'express';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+
 async function main() {
-  console.error('[YARIKIRU MCP] Starting YARIKIRU MCP Client Server...')
+  const args = process.argv.slice(2);
+  const portArg = args.find(a => a.startsWith('--port='));
+  const transportArg = args.find(a => a.startsWith('--transport='));
+
+  const requestedPort = portArg ? parseInt(portArg.split('=')[1]) : null;
+  const transportType = transportArg ? transportArg.split('=')[1] : 'stdio';
+
+  console.error('[YARIKIRU MCP] Starting YARIKIRU MCP Client Server...');
   if (isLocalMode) {
-    console.error('[YARIKIRU MCP] Running in LOCAL-FIRST MODE (SQLite)')
+    console.error('[YARIKIRU MCP] Running in LOCAL-FIRST MODE (SQLite)');
   } else {
-    console.error(`[YARIKIRU MCP] Running in CLOUD-SYNC MODE. Connecting to: ${API_URL}`)
+    console.error(`[YARIKIRU MCP] Running in CLOUD-SYNC MODE. Connecting to: ${API_URL}`);
   }
 
   const server = new McpServer(
     {
       name: 'yarikiru-mcp-server',
-      version: '1.1.0',
+      version: '1.2.0',
     },
     { capabilities: { tools: {} } }
-  )
+  );
 
   // -----------------------------------------------------
   // 0. Parallel Operations (Batch Fetching)
@@ -1014,10 +1024,70 @@ async function main() {
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }], structuredContent: result }
   })
 
-  // Start STDIO transport
-  const transport = new StdioServerTransport()
-  await server.connect(transport)
-  console.error('[YARIKIRU MCP] Server running on stdio')
+  // ============================================
+  // Transport Selection & Port Discovery
+  // ============================================
+
+  if (transportType === 'sse') {
+    const app = express();
+    let transport;
+
+    const findAvailablePort = async (startPort, endPort) => {
+      const net = await import('net');
+      return new Promise((resolve, reject) => {
+        const checkPort = (port) => {
+          if (port > endPort) {
+            reject(new Error('No available ports in range 3100-3110'));
+            return;
+          }
+          const checkServer = net.createServer();
+          checkServer.once('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+              checkPort(port + 1);
+            } else {
+              reject(err);
+            }
+          });
+          checkServer.once('listening', () => {
+            checkServer.close();
+            resolve(port);
+          });
+          checkServer.listen(port);
+        };
+        checkPort(startPort);
+      });
+    };
+
+    try {
+      const port = requestedPort || await findAvailablePort(3100, 3110);
+
+      app.get('/sse', async (req, res) => {
+        transport = new SSEServerTransport('/messages', res);
+        await server.connect(transport);
+      });
+
+      app.post('/messages', async (req, res) => {
+        if (!transport) {
+          res.status(400).send('No active SSE connection');
+          return;
+        }
+        await transport.handlePostMessage(req, res);
+      });
+
+      app.listen(port, () => {
+        console.error(`[YARIKIRU MCP] SSE server running on port ${port}`);
+        console.error(`[YARIKIRU MCP] Endpoint: http://localhost:${port}/sse`);
+      });
+    } catch (err) {
+      console.error(`[YARIKIRU MCP] Failed to start SSE server: ${err.message}`);
+      process.exit(1);
+    }
+  } else {
+    // Default to STDIO transport
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error('[YARIKIRU MCP] Server running on stdio');
+  }
 }
 
 main().catch((error) => {

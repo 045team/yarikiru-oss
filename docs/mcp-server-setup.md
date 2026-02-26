@@ -30,7 +30,10 @@ mkdir -p ~/.config/claude
   "mcpServers": {
     "yarikiru": {
       "command": "node",
-      "args": ["/Users/kitamuratatsuhiko/yarikiru/src/mcp-server/index.js"],
+      "args": [
+        "/Users/kitamuratatsuhiko/yarikiru/src/mcp-server/index.mjs",
+        "--transport=stdio"
+      ],
       "env": {
         "TURSO_DATABASE_URL": "libsql://yarikiru-045team.aws-ap-northeast-1.turso.io",
         "TURSO_AUTH_TOKEN": "your-auth-token-here"
@@ -42,7 +45,20 @@ mkdir -p ~/.config/claude
 
 **注意**: `TURSO_AUTH_TOKEN` は実際のトークンに置き換えてください。
 
-### 3. Claude Codeを再起動
+### 3. SSE（Server-Sent Events）トランスポートの利用 (オプション)
+
+`stdio` の代わりにネットワークポート(SSE)を使用することも可能です。ローカルに依存せず外部のクライアントからMCPに接続したい場合に便利です。
+
+デフォルトでは `3100` から `3110` までの空きポートを自動検索しますが、`--port` 引数で指定可能です。
+
+```bash
+# SSE モードで起動
+node src/mcp-server/index.mjs --transport=sse --port=3100
+```
+
+起動後、クライアントから `http://localhost:3100/sse` に接続してMCPを利用できます。
+
+### 4. Claude Codeを再起動
 
 Claude Codeを再起動して、MCPサーバーが認識されることを確認します。
 

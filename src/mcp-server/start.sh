@@ -17,4 +17,4 @@ echo "Starting YARIKIRU MCP Server..."
 echo "Database: $TURSO_DATABASE_URL"
 
 # Start the MCP server
-node src/mcp-server/index.mjs
+node src/mcp-server/index.mjs "$@"

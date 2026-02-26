@@ -3,10 +3,13 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 /**
- * Next.js middleware for Clerk authentication
+ * Next.js proxy for Clerk authentication
  *
- * This middleware runs before every request to protected routes.
+ * This proxy runs before every request to protected routes.
  * It validates Clerk auth sessions and redirects unauthenticated users.
+ *
+ * @see https://nextjs.org/docs/app/api-reference/file-conventions/proxy
+ * @deprecated-middleware - Renamed from middleware to proxy in Next.js 16
  */
 
 // Define protected and public routes
@@ -28,7 +31,7 @@ const isPublicRoute = createRouteMatcher([
   '/sso-callback',
 ])
 
-export default clerkMiddleware(async (auth, req: NextRequest) => {
+export const proxy = clerkMiddleware(async (auth, req: NextRequest) => {
   // Allow MCP endpoint to handle its own API Key authentication
   if (req.nextUrl.pathname.startsWith('/api/mcp')) {
     return NextResponse.next()
@@ -50,9 +53,9 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
 })
 
 /**
- * Matcher configuration for middleware
+ * Matcher configuration for proxy
  *
- * Defines which routes the middleware should run on.
+ * Defines which routes the proxy should run on.
  * Include all routes except static files and Next.js internals.
  */
 export const config = {

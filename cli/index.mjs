@@ -145,14 +145,23 @@ program
     .command('ui')
     .description('ローカルダッシュボードUIを起動します')
     .action(() => {
-        // __dirname points to `cli`, so project root is `..`
-        const cwd = path.resolve(__dirname, '..');
+        // __dirname = cli/, package root = ..
+        const pkgRoot = path.resolve(__dirname, '..');
+        const nextDir = path.join(pkgRoot, '.next');
+        const serverDir = path.join(nextDir, 'server');
 
-        // For global npm installs, the UI is bundled and ready.
-
+        if (!fs.existsSync(serverDir)) {
+            console.error(chalk.red('✗ ビルドが見つかりません。先にビルドを実行してください:'));
+            console.error(chalk.cyan('  $ cd ' + pkgRoot));
+            console.error(chalk.cyan('  $ npm run build'));
+            console.error(chalk.dim('\nまたは npx で実行:'));
+            console.error(chalk.cyan('  $ npx yarikiru-oss init  # 初期セットアップ後'));
+            console.error(chalk.cyan('  $ npx yarikiru-oss ui'));
+            process.exit(1);
+        }
 
         console.log(chalk.green('✓ YARIKIRU OSS ダッシュボードを起動中... (http://localhost:3000)'));
-        const serverProcess = spawnSync('npx', ['next', 'start'], { stdio: 'inherit', cwd });
+        const serverProcess = spawnSync('npx', ['next', 'start'], { stdio: 'inherit', cwd: pkgRoot });
         process.exit(serverProcess.status ?? 0);
     });
 

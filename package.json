@@ -9,18 +9,25 @@
   },
   "files": [
     "cli",
+    "scripts",
     "src",
     "public",
     "turso",
+    ".next/BUILD_ID",
     ".next/server",
     ".next/static",
+    ".next/package.json",
     ".next/build-manifest.json",
     ".next/prerender-manifest.json",
     ".next/routes-manifest.json",
     ".next/required-server-files.json"
   ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
     "prepack": "npm run build",
+    "postinstall": "node scripts/postinstall.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

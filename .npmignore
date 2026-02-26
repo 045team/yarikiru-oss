@@ -1,10 +1,27 @@
-**/.next/cache/**
-**/.next/standalone/**
-**/.env*
-**/.DS_Store
-**/*.db
-**/*.db-shm
-**/*.db-wal
-**/.planning/**
-**/.dmux/**
+# NPM pack: exclude build artifacts and caches
+.next/cache/
+.next/standalone/
+.next/node_modules/
+.next/turbopack/
+.next/diagnostics/
+.next/trace/
+.next/trace-build/
+.next/build/
+
+# Environment & secrets
+.env
+.env.*
+# OS & misc
+.DS_Store
+*.db
+*.db-shm
+*.db-wal
+.planning/
+.dmux/
+
+# Never pack node_modules (npm installs deps separately)
 node_modules/
+
+# Development / test artifacts
+*.log
+test-ui-run/

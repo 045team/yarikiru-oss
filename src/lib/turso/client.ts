@@ -1,5 +1,6 @@
 import fs from 'fs'
 import path from 'path'
+import os from 'os'
 import { createClient } from '@libsql/client'
 
 export interface TursoEnv {
@@ -7,10 +8,11 @@ export interface TursoEnv {
     TURSO_AUTH_TOKEN?: string
 }
 
+const DEFAULT_LOCAL_DB = `file:${path.join(os.homedir(), '.yarikiru', 'local.db')}`
+
 function getEnv(): TursoEnv {
-    // OSS version uses local SQLite by default
     return {
-        TURSO_DATABASE_URL: 'file:.yarikiru/local.db',
+        TURSO_DATABASE_URL: process.env.TURSO_DATABASE_URL || DEFAULT_LOCAL_DB,
     }
 }
 

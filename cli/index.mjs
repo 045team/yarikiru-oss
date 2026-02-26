@@ -1314,8 +1314,9 @@ program
     .command('sync')
     .description('GSDの .planning フォルダを読み込み、Yarikiruデータベースに同期します')
     .option('-w, --watch', '.planning の変更を監視し、自動で同期します')
+    .option('-p, --path <dir>', 'GSDプロジェクトのルートパス（.planning の親）')
     .action(async (opts) => {
-        const baseDir = process.cwd()
+        const baseDir = opts.path ? path.resolve(opts.path) : process.cwd()
         if (opts.watch) {
             const chokidar = await import('chokidar')
             const watcher = chokidar.watch(path.join(baseDir, '.planning'), {

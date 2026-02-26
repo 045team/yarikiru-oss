@@ -8,7 +8,7 @@
 
 /**
  * Returns the authorization filter for the `yarikiru_projects` table.
- * @param userId - The Clerk User ID
+ * @param userId - The User ID
  * @param tableAlias - The alias or table name (default: 'p')
  */
 export function enforceProjectRLS(userId: string, tableAlias: string = 'p') {
@@ -21,7 +21,7 @@ export function enforceProjectRLS(userId: string, tableAlias: string = 'p') {
 /**
  * Returns the authorization filter for the `yarikiru_goals` table.
  * It enforces ownership by joining with the parent `yarikiru_projects` table.
- * @param userId - The Clerk User ID
+ * @param userId - The User ID
  * @param targetIdColumn - The column to check against (default: 'id')
  */
 export function enforceGoalRLS(userId: string, targetIdColumn: string = 'id') {
@@ -38,7 +38,7 @@ export function enforceGoalRLS(userId: string, targetIdColumn: string = 'id') {
 /**
  * Returns the authorization filter for the `yarikiru_sub_tasks` table.
  * Enforces ownership by joining upwards all the way to `yarikiru_projects`.
- * @param userId - The Clerk User ID
+ * @param userId - The User ID
  * @param targetIdColumn - The column to check against (default: 'id')
  */
 export function enforceSubTaskRLS(userId: string, targetIdColumn: string = 'id') {
@@ -55,7 +55,7 @@ export function enforceSubTaskRLS(userId: string, targetIdColumn: string = 'id')
 
 /**
  * Returns the authorization filter for the `yarikiru_learnings` table.
- * @param userId - The Clerk User ID
+ * @param userId - The User ID
  * @param tableAlias - The alias or table name (default: 'l')
  */
 export function enforceLearningRLS(userId: string, tableAlias: string = 'l') {

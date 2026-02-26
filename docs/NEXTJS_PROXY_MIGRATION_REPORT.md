@@ -45,10 +45,10 @@ Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
 
 ```typescript
 /**
- * Next.js middleware for Clerk authentication
+ * Next.js middleware for local authentication
  * ...
  */
-export default clerkMiddleware(async (auth, req: NextRequest) => {
+export default localProxy(async (auth, req: NextRequest) => {
   // ...
 })
 
@@ -59,12 +59,12 @@ export const config = { matcher: [...] }
 
 ```typescript
 /**
- * Next.js proxy for Clerk authentication
+ * Next.js proxy for local authentication
  * ...
  * @see https://nextjs.org/docs/app/api-reference/file-conventions/proxy
  * @deprecated-middleware - Renamed from middleware to proxy in Next.js 16
  */
-export const proxy = clerkMiddleware(async (auth, req: NextRequest) => {
+export const proxy = localProxy(async (auth, req: NextRequest) => {
   // ...（ロジックは同一）
 })
 
@@ -86,7 +86,7 @@ export const config = { matcher: [...] }
 ## 4. 互換性・影響範囲
 
 - **API 互換性**: `NextRequest`, `NextResponse`, `config.matcher` はそのまま利用可能
-- **Clerk / auth-stub**: `clerkMiddleware` の戻り値は同一の関数シグネチャのためそのまま利用可能
+- **auth-stub**: `localProxy` の戻り値は同一の関数シグネチャのためそのまま利用可能
 - **他ファイル**: `src/lib/auth.ts`, `src/app/dashboard/page.tsx` 等の「middleware」コメント表記は認証の概念説明であり、ファイル名変更の影響なし
 
 ---

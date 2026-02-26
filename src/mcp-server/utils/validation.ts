@@ -70,13 +70,13 @@ export function validateWorkLogIdFormat(logId: string): boolean {
 }
 
 /**
- * Validate user ID format (Clerk user ID format).
+ * Validate user ID format (user_xxx format).
  *
  * @param userId - The user ID to validate
  * @returns boolean - True if format is valid, false otherwise
  */
 export function validateUserIdFormat(userId: string): boolean {
-    // Clerk user IDs typically start with "user_" followed by alphanumeric characters
+    // User IDs typically start with "user_" followed by alphanumeric characters
     const pattern = /^user_[a-zA-Z0-9]+$/
     return pattern.test(userId)
 }

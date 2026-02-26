@@ -40,7 +40,7 @@ async function run() {
     let projectId, userId
     if (projectResult.rows.length === 0) {
         console.log('Project not found. Creating a general project...')
-        // 全くプロジェクトがない場合は作成が難しい（Clerk userIdが取得できないため）。
+        // 全くプロジェクトがない場合は作成が難しい（userIdが取得できないため）。
         // デモ用ユーザーIDなどはあるか？
         console.error('Error: You need to login to Yarikiru web UI at least once to create a project.')
         process.exit(1)

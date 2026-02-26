@@ -37,6 +37,6 @@ npm run yarikiru:cli -- get-goal --goalId goal_demo_001
 
 ### アプリにタスクを表示するには
 
-- **ダッシュボード**: 目標の `user_id` がログイン中の Clerk userId と一致する必要があります
+- **ダッシュボード**: 目標の `user_id` がログイン中の userId と一致する必要があります
 - **/goals/[id] ページ**: URL で直接アクセス（例: `/goals/goal_demo_001`）すれば、その目標のタスクが表示されます
 - CLI で追加したタスクは即座に DB に保存されるため、ページをリロードすれば反映されます

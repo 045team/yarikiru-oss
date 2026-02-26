@@ -206,7 +206,7 @@ function extractPatternTags(text: string): string[] {
     }
   }
 
-  const techKeywords = ['React', 'Vue', 'Next.js', 'Nuxt', 'TypeScript', 'Turso', 'Prisma', 'Tailwind', 'Clerk', 'Vercel', 'AWS', 'Docker', 'Kubernetes']
+  const techKeywords = ['React', 'Vue', 'Next.js', 'Nuxt', 'TypeScript', 'Turso', 'Prisma', 'Tailwind', 'Vercel', 'AWS', 'Docker', 'Kubernetes']
   for (const keyword of techKeywords) {
     if (text.includes(keyword)) {
       tags.push(keyword)

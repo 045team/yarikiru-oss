@@ -18,7 +18,7 @@ const result = await db.execute({
 ```
 
 ## 2. API Endpoint Validation
-- Every route MUST authenticate the user via `auth()` from `@clerk/nextjs/server`.
+- Every route MUST authenticate the user via `auth()` from `@/lib/auth-stub` (Local-First OSS).
 - Return `401 Unauthorized` if the `userId` is missing.
 - When performing mutations (`POST`, `PUT`, `PATCH`, `DELETE`), verify ownership BEFORE making any updates. Do not assume that simply knowing the `id` grants resource permission.
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { Refine } from '@refinedev/core'
-import { useClerkAuth } from '@/lib/clerk-auth'
+import { useLocalAuth } from '@/lib/local-auth'
 import { dataProvider } from '@/lib/turso-refine'
 
 /**
@@ -11,7 +11,7 @@ import { dataProvider } from '@/lib/turso-refine'
  * Integrates authentication and data providers.
  */
 export function RefineProvider({ children }: { children: React.ReactNode }) {
-  const authProvider = useClerkAuth()
+  const authProvider = useLocalAuth()
 
   return (
     <Refine

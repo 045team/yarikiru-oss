@@ -3,12 +3,11 @@
 // 認証と権限チェックの統合ヘルパー
 // ============================================
 
-import { auth as clerkAuth, currentUser } from '@/lib/auth-stub'
+import { auth, currentUser } from '@/lib/auth-stub'
 import { NextResponse } from 'next/server'
 import { getMemberById, getMemberByEmail } from '@/lib/turso/members'
 import {
   hasPermission,
-  requirePermission,
   isAdmin,
   isModeratorOrAbove,
   forbiddenResponse,
@@ -59,7 +58,7 @@ export class AdminAuthError extends Error {
 // ============================================
 
 /**
- * Get the current member from Clerk session
+ * Get the current member from local auth session
  *
  * @returns Member data or null if not authenticated
  *
@@ -77,7 +76,7 @@ export class AdminAuthError extends Error {
  * ```
  */
 export async function getCurrentMember(): Promise<AuthResult> {
-  const { userId } = await clerkAuth()
+  const { userId } = await auth()
 
   if (!userId) {
     return null
@@ -93,8 +92,7 @@ export async function getCurrentMember(): Promise<AuthResult> {
     }
   }
 
-  // User is authenticated via Clerk but not in members table
-  // This can happen for newly signed-up users
+  // User is authenticated but not in members table
   return null
 }
 
@@ -440,14 +438,6 @@ export function apiSuccess<T>(data: T, status: number = 200) {
   return NextResponse.json(data, { status })
 }
 
-/**
- * Create standardized error response (alias for backward compatibility)
- * @deprecated Use apiError instead
- */
-function errorResponse(message: string, status: number = 403) {
-  return NextResponse.json({ error: message }, { status })
-}
-
 // ============================================
 // Middleware Helpers
 // ============================================
@@ -469,7 +459,6 @@ export function isProtectedRoute(request: Request): boolean {
     '/login',
     '/signup',
     '/api/auth',
-    '/api/clerk',
   ]
 
   // Check if the route starts with any public route

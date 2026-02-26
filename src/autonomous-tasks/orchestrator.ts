@@ -28,7 +28,7 @@ function collectProjectContext(): string {
   }
 
   // プロジェクト構造
-  context.push(`\n## Project Structure\n- Next.js 15.2.4\n- Turso (SQLite)\n- Clerk Auth\n- MCP Server`);
+  context.push(`\n## Project Structure\n- Next.js 15.2.4\n- Turso (SQLite)\n- Local Auth\n- MCP Server`);
 
   return context.join("\n");
 }

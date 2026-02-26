@@ -275,7 +275,7 @@ function extractTags(text: string): string[] {
   // 技術キーワード
   const techKeywords = [
     'React', 'Vue', 'Next.js', 'Nuxt', 'TypeScript', 'Turso', 'Prisma',
-    'Tailwind', 'Clerk', 'Vercel', 'AWS', 'Docker', 'Kubernetes'
+    'Tailwind', 'Vercel', 'AWS', 'Docker', 'Kubernetes'
   ]
 
   for (const keyword of techKeywords) {

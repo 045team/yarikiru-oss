@@ -39,7 +39,7 @@ export const getRevenueCat = (): Purchases => {
 };
 
 /**
- * Log in to RevenueCat using a specific App User ID (e.g. Clerk user ID).
+ * Log in to RevenueCat using a specific App User ID.
  */
 export const configureRevenueCatWithUser = async (appUserId: string) => {
     const purchases = getRevenueCat();

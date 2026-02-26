@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { ClerkProvider } from '@/lib/auth-stub'
+import { LocalAuthProvider } from '@/lib/auth-stub'
 import { RefineProvider } from '@/components/refine-provider'
 import { ServiceWorkerRegistration } from '@/components/service-worker-registration'
 import { PWAInstallPrompt } from '@/components/pwa-install-prompt'
@@ -32,18 +32,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <ClerkProvider
-      // Improve mobile compatibility with proper session handling
-      appearance={{
-        variables: {
-          colorPrimary: '#6366f1',
-        },
-      }}
-      signInUrl="/sign-in"
-      signUpUrl="/sign-up"
-      signInFallbackRedirectUrl="/dashboard"
-      signUpFallbackRedirectUrl="/dashboard"
-    >
+    <LocalAuthProvider>
       <html lang="ja">
         <head>
           <link rel="manifest" href="/manifest.json" />
@@ -66,6 +55,6 @@ export default function RootLayout({
           </DisplayProvider>
         </body>
       </html>
-    </ClerkProvider>
+    </LocalAuthProvider>
   )
 }

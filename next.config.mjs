@@ -8,8 +8,8 @@ const __dirname = path.dirname(__filename);
 const nextConfig = {
   output: 'standalone',
   outputFileTracingRoot: __dirname,
-  eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
+  turbopack: {},
   webpack: (config, { isServer }) => {
     if (isServer) {
       // Node.js built-ins: treat as external on server

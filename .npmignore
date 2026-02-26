@@ -1,0 +1,10 @@
+**/.next/cache/**
+**/.next/standalone/**
+**/.env*
+**/.DS_Store
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/.planning/**
+**/.dmux/**
+node_modules/

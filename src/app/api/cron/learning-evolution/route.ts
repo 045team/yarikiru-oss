@@ -68,8 +68,14 @@ async function summarizeRepo(description: string, url: string) {
  */
 export async function GET(request: Request) {
     // Authorize via Vercel Cron Secret
+    // Production: CRON_SECRET required. Development: bypass if not set.
     const authHeader = request.headers.get('authorization')
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    const secret = process.env.CRON_SECRET
+    if (process.env.NODE_ENV === 'production') {
+        if (!secret || authHeader !== `Bearer ${secret}`) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+        }
+    } else if (secret && authHeader !== `Bearer ${secret}`) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

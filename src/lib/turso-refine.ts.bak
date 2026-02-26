@@ -1,0 +1,710 @@
+// ============================================
+// Refine Data Provider for Turso
+// Refine互換のデータプロバイダー実装
+// ============================================
+
+import type {
+  DataProvider,
+  GetListResponse,
+  GetOneResponse,
+  CreateResponse,
+  CreateParams,
+  GetListParams,
+  GetOneParams,
+  UpdateParams,
+  UpdateManyParams,
+  UpdateResponse,
+  DeleteOneParams,
+  DeleteOneResponse,
+  DeleteManyParams,
+  DeleteManyResponse,
+  GetManyResponse,
+  GetManyParams,
+  UpdateManyResponse,
+  BaseKey,
+  BaseRecord,
+  CrudFilter,
+  CrudSorting,
+  CustomParams,
+  CustomResponse,
+} from '@refinedev/core'
+import { getDatabase } from './turso'
+import type {
+  Project,
+  ProjectInsert,
+  ProjectUpdate,
+  ProjectTask,
+  ProjectTaskInsert,
+  ProjectTaskUpdate,
+  KPI,
+  KPIInsert,
+  KPIUpdate,
+  Milestone,
+  MilestoneInsert,
+  MilestoneUpdate,
+} from '@/types/turso'
+
+// ============================================
+// 型定義
+// ============================================
+
+/**
+ * リソースマッピング
+ * Refineのリソース名 → Tursoのテーブル名
+ */
+const RESOURCE_MAPPING: Record<string, string> = {
+  goals: 'projects',
+  generated_tasks: 'project_tasks',
+  focus_sessions: 'project_tasks', // フォーカスセッションはタスクとして扱う
+  projects: 'projects',
+  tasks: 'project_tasks',
+  milestones: 'milestones',
+  kpis: 'kpis',
+}
+
+/**
+ * リソース名の解決
+ */
+function resolveResource(resource: string): string {
+  return RESOURCE_MAPPING[resource] || resource
+}
+
+/**
+ * BaseKeyを文字列に変換
+ */
+function stringifyKey(key: BaseKey): string {
+  return String(key)
+}
+
+/**
+ * フィルタ条件の適用（クライアントサイド）
+ */
+function applyFilters<T extends BaseRecord>(data: T[], filters?: CrudFilter[]): T[] {
+  if (!filters || filters.length === 0) {
+    return data
+  }
+
+  return data.filter((item) => {
+    return filters.every((filter) => {
+      if ('field' in filter) {
+        const itemValue = item[filter.field]
+        const filterValue = filter.value
+
+        switch (filter.operator) {
+          case 'eq':
+          case '=' as any:
+            return itemValue === filterValue
+          case 'ne':
+          case '!=' as any:
+            return itemValue !== filterValue
+          case 'gt':
+          case '>' as any:
+            return typeof itemValue === 'number' && itemValue > filterValue
+          case 'gte':
+          case '>=' as any:
+            return typeof itemValue === 'number' && itemValue >= filterValue
+          case 'lt':
+          case '<' as any:
+            return typeof itemValue === 'number' && itemValue < filterValue
+          case 'lte':
+          case '<=' as any:
+            return typeof itemValue === 'number' && itemValue <= filterValue
+          case 'contains':
+            return typeof itemValue === 'string' && itemValue.includes(filterValue)
+          case 'ncontains':
+            return typeof itemValue === 'string' && !itemValue.includes(filterValue)
+          case 'null':
+            return itemValue === null
+          case 'nnull':
+            return itemValue !== null
+          case 'in':
+            return Array.isArray(filterValue) && filterValue.includes(itemValue)
+          case 'nin':
+            return Array.isArray(filterValue) && !filterValue.includes(itemValue)
+          case 'startswith':
+            return typeof itemValue === 'string' && itemValue.startsWith(filterValue)
+          case 'endswith':
+            return typeof itemValue === 'string' && itemValue.endsWith(filterValue)
+          default:
+            console.warn(`Unsupported filter operator: ${filter.operator}`)
+            return true
+        }
+      }
+      return true
+    })
+  })
+}
+
+/**
+ * ソートの適用（クライアントサイド）
+ */
+function applySorting<T extends BaseRecord>(data: T[], sorters?: CrudSorting): T[] {
+  if (!sorters || sorters.length === 0) {
+    return data
+  }
+
+  return [...data].sort((a, b) => {
+    for (const sorter of sorters) {
+      const aVal = a[sorter.field]
+      const bVal = b[sorter.field]
+      const order = sorter.order === 'asc' ? 1 : -1
+
+      if (aVal < bVal) return -1 * order
+      if (aVal > bVal) return 1 * order
+    }
+    return 0
+  })
+}
+
+/**
+ * ページネーションの適用（クライアントサイド）
+ */
+function applyPagination<T>(data: T[], page: number = 1, perPage: number = 10): { data: T[], total: number } {
+  const start = (page - 1) * perPage
+  const paginatedData = data.slice(start, start + perPage)
+
+  return {
+    data: paginatedData,
+    total: data.length,
+  }
+}
+
+// ============================================
+// データプロバイダー実装
+// ============================================
+
+export const dataProvider: DataProvider = {
+  /**
+   * API URL の取得
+   * TursoはREST APIではないため、空文字列を返す
+   */
+  getApiUrl: () => {
+    return ''
+  },
+
+  /**
+   * リスト取得
+   * ページネーション、ソート、フィルタリングに対応
+   */
+  async getList<TData extends BaseRecord = BaseRecord>({
+    resource,
+    filters,
+    sorters,
+    pagination,
+    meta,
+  }: GetListParams): Promise<GetListResponse<TData>> {
+    const db = getDatabase()
+    const resolvedResource = resolveResource(resource)
+
+    try {
+      // メタデータからユーザーIDやプロジェクトIDを取得
+      const userId = (meta as any)?.userId
+      const projectId = (meta as any)?.projectId
+
+      let data: TData[] = []
+
+      // リソースに応じてデータを取得
+      switch (resolvedResource) {
+        case 'projects':
+          if (userId) {
+            const projects = await db.getProjectsByUserId(userId)
+            data = projects as unknown as TData[]
+          }
+          break
+
+        case 'project_tasks':
+          if (projectId) {
+            const tasks = await db.getTasksByProject(projectId)
+            data = tasks as unknown as TData[]
+          } else if (userId) {
+            // ユーザーの全プロジェクトからタスクを収集
+            const projects = await db.getProjectsByUserId(userId)
+            for (const project of projects) {
+              const tasks = await db.getTasksByProject(project.id)
+              data.push(...(tasks as unknown as TData[]))
+            }
+          }
+          break
+
+        case 'milestones':
+          if (projectId) {
+            const milestones = await db.getMilestonesByProject(projectId)
+            data = milestones as unknown as TData[]
+          }
+          break
+
+        case 'kpis':
+          if (userId) {
+            const kpis = await db.getKPIsByUserId(userId)
+            data = kpis as unknown as TData[]
+          }
+          break
+
+        default:
+          throw new Error(`Unsupported resource: ${resource}`)
+      }
+
+      // フィルタリング
+      let filteredData = applyFilters(data, filters)
+
+      // ソート
+      const sortedData = applySorting(filteredData, sorters)
+
+      // ページネーション
+      const current = pagination?.current ?? 1
+      const pageSize = pagination?.pageSize ?? 10
+
+      if (pagination?.mode === 'server' || pagination?.mode === undefined) {
+        const result = applyPagination(sortedData, current, pageSize)
+        return {
+          data: result.data,
+          total: result.total,
+        }
+      } else {
+        // クライアントサイドページネーション
+        return {
+          data: sortedData as TData[],
+          total: sortedData.length,
+        }
+      }
+    } catch (error) {
+      console.error(`Error in getList for resource ${resource}:`, error)
+      throw new Error(
+        `Failed to fetch ${resource}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+  },
+
+  /**
+   * 単一レコード取得
+   */
+  async getOne<TData extends BaseRecord = BaseRecord>({
+    resource,
+    id,
+    meta,
+  }: GetOneParams): Promise<GetOneResponse<TData>> {
+    const db = getDatabase()
+    const resolvedResource = resolveResource(resource)
+    const idStr = stringifyKey(id)
+
+    try {
+      let data: TData | null = null
+
+      switch (resolvedResource) {
+        case 'projects':
+          data = (await db.getProjectById(idStr)) as unknown as TData
+          break
+
+        case 'project_tasks':
+          data = (await db.getTaskById(idStr)) as unknown as TData
+          break
+
+        case 'milestones':
+          data = (await db.getMilestoneById(idStr)) as unknown as TData
+          break
+
+        case 'kpis':
+          data = (await db.getKPIById(idStr)) as unknown as TData
+          break
+
+        default:
+          throw new Error(`Unsupported resource: ${resource}`)
+      }
+
+      if (!data) {
+        throw new Error(`Record not found: ${idStr}`)
+      }
+
+      return { data }
+    } catch (error) {
+      console.error(`Error in getOne for resource ${resource}:`, error)
+      throw new Error(
+        `Failed to fetch ${resource}/${idStr}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+  },
+
+  /**
+   * レコード作成
+   */
+  async create<TData extends BaseRecord = BaseRecord, TVariables = {}>({
+    resource,
+    variables,
+    meta,
+  }: CreateParams<TVariables>): Promise<CreateResponse<TData>> {
+    const db = getDatabase()
+    const resolvedResource = resolveResource(resource)
+
+    try {
+      let data: TData
+
+      switch (resolvedResource) {
+        case 'projects':
+          data = (await db.createProject(variables as ProjectInsert)) as unknown as TData
+          break
+
+        case 'project_tasks':
+          data = (await db.createTask(variables as ProjectTaskInsert)) as unknown as TData
+          break
+
+        case 'milestones':
+          data = (await db.createMilestone(variables as MilestoneInsert)) as unknown as TData
+          break
+
+        case 'kpis':
+          data = (await db.createKPI(variables as KPIInsert)) as unknown as TData
+          break
+
+        default:
+          throw new Error(`Unsupported resource: ${resource}`)
+      }
+
+      return { data }
+    } catch (error) {
+      console.error(`Error in create for resource ${resource}:`, error)
+      throw new Error(
+        `Failed to create ${resource}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+  },
+
+  /**
+   * レコード更新
+   */
+  async update<TData extends BaseRecord = BaseRecord, TVariables = {}>({
+    resource,
+    id,
+    variables,
+    meta,
+  }: UpdateParams<TVariables>): Promise<UpdateResponse<TData>> {
+    const db = getDatabase()
+    const resolvedResource = resolveResource(resource)
+    const idStr = stringifyKey(id)
+
+    try {
+      let data: TData | null = null
+
+      switch (resolvedResource) {
+        case 'projects':
+          data = (await db.updateProject(idStr, variables as ProjectUpdate)) as unknown as TData
+          break
+
+        case 'project_tasks':
+          data = (await db.updateTask(idStr, variables as ProjectTaskUpdate)) as unknown as TData
+          break
+
+        case 'milestones':
+          data = (await db.updateMilestone(idStr, variables as MilestoneUpdate)) as unknown as TData
+          break
+
+        case 'kpis':
+          data = (await db.updateKPI(idStr, variables as KPIUpdate)) as unknown as TData
+          break
+
+        default:
+          throw new Error(`Unsupported resource: ${resource}`)
+      }
+
+      if (!data) {
+        throw new Error(`Failed to update record: ${idStr}`)
+      }
+
+      return { data }
+    } catch (error) {
+      console.error(`Error in update for resource ${resource}:`, error)
+      throw new Error(
+        `Failed to update ${resource}/${idStr}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+  },
+
+  /**
+   * 単一レコード削除
+   */
+  async deleteOne<TData extends BaseRecord = BaseRecord, TVariables = {}>({
+    resource,
+    id,
+    meta,
+  }: DeleteOneParams<TVariables>): Promise<DeleteOneResponse<TData>> {
+    const db = getDatabase()
+    const resolvedResource = resolveResource(resource)
+    const idStr = stringifyKey(id)
+
+    try {
+      let success = false
+
+      switch (resolvedResource) {
+        case 'projects':
+          success = await db.deleteProject(idStr)
+          break
+
+        case 'project_tasks':
+          success = await db.deleteTask(idStr)
+          break
+
+        case 'milestones':
+          success = await db.deleteMilestone(idStr)
+          break
+
+        case 'kpis':
+          success = await db.deleteKPI(idStr)
+          break
+
+        default:
+          throw new Error(`Unsupported resource: ${resource}`)
+      }
+
+      if (!success) {
+        throw new Error(`Failed to delete record: ${idStr}`)
+      }
+
+      // 削除したレコードのIDを返す
+      return { data: { id } as TData }
+    } catch (error) {
+      console.error(`Error in deleteOne for resource ${resource}:`, error)
+      throw new Error(
+        `Failed to delete ${resource}/${idStr}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+  },
+
+  /**
+   * 複数レコード取得
+   */
+  async getMany<TData extends BaseRecord = BaseRecord>({
+    resource,
+    ids,
+    meta,
+  }: GetManyParams): Promise<GetManyResponse<TData>> {
+    const db = getDatabase()
+    const resolvedResource = resolveResource(resource)
+
+    try {
+      const data: TData[] = []
+
+      for (const id of ids) {
+        const idStr = stringifyKey(id)
+        let item: TData | null = null
+
+        switch (resolvedResource) {
+          case 'projects':
+            item = (await db.getProjectById(idStr)) as unknown as TData
+            break
+
+          case 'project_tasks':
+            item = (await db.getTaskById(idStr)) as unknown as TData
+            break
+
+          case 'milestones':
+            item = (await db.getMilestoneById(idStr)) as unknown as TData
+            break
+
+          case 'kpis':
+            item = (await db.getKPIById(idStr)) as unknown as TData
+            break
+
+          default:
+            throw new Error(`Unsupported resource: ${resource}`)
+        }
+
+        if (item) {
+          data.push(item)
+        }
+      }
+
+      return { data }
+    } catch (error) {
+      console.error(`Error in getMany for resource ${resource}:`, error)
+      throw new Error(
+        `Failed to fetch multiple ${resource}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+  },
+
+  /**
+   * 複数レコード更新
+   */
+  async updateMany<TData extends BaseRecord = BaseRecord, TVariables = {}>({
+    resource,
+    ids,
+    variables,
+    meta,
+  }: UpdateManyParams<TVariables>): Promise<UpdateManyResponse<TData>> {
+    const db = getDatabase()
+    const resolvedResource = resolveResource(resource)
+
+    try {
+      const data: BaseKey[] = []
+
+      for (const id of ids) {
+        const idStr = stringifyKey(id)
+        let success = false
+
+        switch (resolvedResource) {
+          case 'projects':
+            const updatedProject = await db.updateProject(idStr, variables as ProjectUpdate)
+            success = !!updatedProject
+            break
+
+          case 'project_tasks':
+            const updatedTask = await db.updateTask(idStr, variables as ProjectTaskUpdate)
+            success = !!updatedTask
+            break
+
+          case 'milestones':
+            const updatedMilestone = await db.updateMilestone(idStr, variables as MilestoneUpdate)
+            success = !!updatedMilestone
+            break
+
+          case 'kpis':
+            const updatedKPI = await db.updateKPI(idStr, variables as KPIUpdate)
+            success = !!updatedKPI
+            break
+
+          default:
+            throw new Error(`Unsupported resource: ${resource}`)
+        }
+
+        if (success) {
+          data.push(id)
+        }
+      }
+
+      return { data: data as unknown as TData[] }
+    } catch (error) {
+      console.error(`Error in updateMany for resource ${resource}:`, error)
+      throw new Error(
+        `Failed to update multiple ${resource}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+  },
+
+  /**
+   * 複数レコード削除
+   */
+  async deleteMany<TData extends BaseRecord = BaseRecord, TVariables = {}>({
+    resource,
+    ids,
+    meta,
+  }: DeleteManyParams<TVariables>): Promise<DeleteManyResponse<TData>> {
+    const db = getDatabase()
+    const resolvedResource = resolveResource(resource)
+
+    try {
+      const data: BaseKey[] = []
+
+      for (const id of ids) {
+        const idStr = stringifyKey(id)
+        let success = false
+
+        switch (resolvedResource) {
+          case 'projects':
+            success = await db.deleteProject(idStr)
+            break
+
+          case 'project_tasks':
+            success = await db.deleteTask(idStr)
+            break
+
+          case 'milestones':
+            success = await db.deleteMilestone(idStr)
+            break
+
+          case 'kpis':
+            success = await db.deleteKPI(idStr)
+            break
+
+          default:
+            throw new Error(`Unsupported resource: ${resource}`)
+        }
+
+        if (success) {
+          data.push(id)
+        }
+      }
+
+      return { data: data as unknown as TData[] }
+    } catch (error) {
+      console.error(`Error in deleteMany for resource ${resource}:`, error)
+      throw new Error(
+        `Failed to delete multiple ${resource}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+  },
+
+  /**
+   * カスタムAPIエンドポイント
+   * 特殊なデータ操作やリレーション取得に対応
+   */
+  async custom<TData extends BaseRecord = BaseRecord, TQuery = unknown, TPayload = unknown>({
+    action,
+    meta,
+    payload,
+  }: CustomParams<TQuery, TPayload>): Promise<CustomResponse<TData>> {
+    const db = getDatabase()
+    const resolvedResource = resolveResource(resource)
+
+    try {
+      switch (action) {
+        case 'getSubTasks':
+          // サブタスク取得
+          if (meta?.parentTaskId) {
+            const subTasks = await db.getSubTasks(meta.parentTaskId as string)
+            return { data: subTasks as unknown as TData[] }
+          }
+          break
+
+        case 'getProjectTasks':
+          // プロジェクトの全タスク取得
+          if (meta?.projectId) {
+            const tasks = await db.getTasksByProject(meta.projectId as string)
+            return { data: tasks as unknown as TData[] }
+          }
+          break
+
+        case 'getProjectMilestones':
+          // プロジェクトのマイルストーン取得
+          if (meta?.projectId) {
+            const milestones = await db.getMilestonesByProject(meta.projectId as string)
+            return { data: milestones as unknown as TData[] }
+          }
+          break
+
+        case 'getKPIHistory':
+          // KPIの履歴取得
+          if (resolvedResource === 'kpis' && meta?.kpiId) {
+            const snapshots = await db.getKPISnapshots(
+              meta.kpiId as string,
+              (meta?.limit as number) || 100
+            )
+            return { data: snapshots as unknown as TData[] }
+          }
+          break
+
+        case 'recordKPIValue':
+          // KPI値の記録
+          if (resolvedResource === 'kpis' && meta?.kpiId && payload?.value !== undefined) {
+            const snapshot = await db.recordKPISnapshot(meta.kpiId as string, payload.value as number)
+            return { data: snapshot as unknown as TData }
+          }
+          break
+
+        default:
+          throw new Error(`Unsupported custom action: ${action}`)
+      }
+
+      throw new Error(`Invalid custom action parameters`)
+    } catch (error) {
+      console.error(`Error in custom for resource ${resource}:`, error)
+      throw new Error(
+        `Failed to execute custom action ${action}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+  },
+}
+
+// ============================================
+// エクスポート
+// ============================================
+
+export default dataProvider

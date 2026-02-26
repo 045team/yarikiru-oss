@@ -1,0 +1,95 @@
+import fs from 'fs'
+import path from 'path'
+import { createClient } from '@libsql/client'
+
+export interface TursoEnv {
+    TURSO_DATABASE_URL: string
+    TURSO_AUTH_TOKEN?: string
+}
+
+function getEnv(): TursoEnv {
+    // OSS version uses local SQLite by default
+    return {
+        TURSO_DATABASE_URL: 'file:.yarikiru/local.db',
+    }
+}
+
+let tursoClient: ReturnType<typeof createClient> | null = null
+
+export function getTursoClient() {
+    if (tursoClient) {
+        return tursoClient
+    }
+
+    const env = getEnv()
+
+    // Ensure the directory exists if using a local file database
+    if (env.TURSO_DATABASE_URL.startsWith('file:')) {
+        const dbPath = env.TURSO_DATABASE_URL.replace('file:', '')
+        const dir = path.dirname(dbPath)
+        if (dir && dir !== '.' && !fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true })
+        }
+    }
+
+    tursoClient = createClient({
+        url: env.TURSO_DATABASE_URL,
+    })
+
+    return tursoClient
+}
+
+// ============================================
+// SQL実行ヘルパー (共通関数化)
+// ============================================
+
+export async function execute<T>(
+    sql: string,
+    params: (string | number | boolean | null)[] = []
+): Promise<T[]> {
+    const client = getTursoClient()
+    const result = await client.execute({ sql, args: params })
+    return result.rows as T[]
+}
+
+export async function executeWithObject<T>(
+    options: { sql: string; args: (string | number | boolean | null)[] }
+): Promise<T[]> {
+    const client = getTursoClient()
+    const result = await client.execute(options)
+    return result.rows as T[]
+}
+
+export async function executeOne<T>(
+    sql: string,
+    params: (string | number | boolean | null)[] = []
+): Promise<T | null> {
+    const rows = await execute<T>(sql, params)
+    return rows[0] || null
+}
+
+// MVCC transactions
+
+export async function executeWithMVCC<T>(
+    sql: string,
+    params: (string | number | boolean | null)[] = []
+): Promise<T[]> {
+    const client = getTursoClient()
+    await client.execute('BEGIN CONCURRENT')
+    try {
+        const result = await client.execute({ sql, args: params })
+        await client.execute('COMMIT')
+        return result.rows as T[]
+    } catch (error) {
+        await client.execute('ROLLBACK')
+        throw error
+    }
+}
+
+export async function executeOneWithMVCC<T>(
+    sql: string,
+    params: (string | number | boolean | null)[] = []
+): Promise<T | null> {
+    const rows = await executeWithMVCC<T>(sql, params)
+    return rows[0] || null
+}

@@ -10,19 +10,15 @@ const nextConfig = {
   outputFileTracingRoot: __dirname,
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
-  // webpackキャッシュの警告を抑制
-  webpack: (config, { dev, isServer }) => {
-    // 開発モードでの詳細なログを抑制
-    if (dev && !isServer) {
-      config.infrastructureLogging = {
-        ...config.infrastructureLogging,
-        level: 'error',
-      };
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      // Node.js built-ins: treat as external on server
+      config.externals = [...(config.externals || []), 'fs', 'path', 'os', 'crypto'];
     }
     return config;
   },
-  serverExternalPackages: ['@libsql/client', 'libsql', '@libsql/darwin-x64', '@libsql/darwin-arm64'],
-  // Clerk の開発環境ドメインを許可
+  // OSS版: better-sqlite3 を使用 (Turso/LibSQL は不使用)
+  serverExternalPackages: ['better-sqlite3', '@libsql/client', 'libsql'],
   async rewrites() {
     return [
       {
@@ -31,24 +27,14 @@ const nextConfig = {
       },
     ];
   },
-  // CORS 設定を追加
   async headers() {
     return [
       {
         source: '/:path*',
         headers: [
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: '*',
-          },
-          {
-            key: 'Access-Control-Allow-Methods',
-            value: 'GET, POST, PUT, DELETE, OPTIONS',
-          },
-          {
-            key: 'Access-Control-Allow-Headers',
-            value: 'Content-Type, Authorization',
-          },
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, DELETE, OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
         ],
       },
     ];

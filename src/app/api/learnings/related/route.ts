@@ -11,7 +11,7 @@ import { generateEmbedding, cosineSimilarity, bufferToEmbedding } from '@/lib/tu
 import { getMemberById } from '@/lib/turso/members'
 import { execute } from '@/lib/turso/client'
 
-export const runtime = 'edge'
+// export const runtime = 'edge' // removed: OSS uses Node.js runtime
 
 interface RelatedLearningsRequest {
   goalId?: string

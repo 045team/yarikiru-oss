@@ -145,10 +145,19 @@ program
     .command('ui')
     .description('ローカルダッシュボードUIを起動します')
     .action(() => {
-        console.log(chalk.green('✓ YARIKIRU OSS ダッシュボードを起動中... (http://localhost:3000)'));
-
         // __dirname points to `cli`, so project root is `..`
         const cwd = path.resolve(__dirname, '..');
+
+        // Ensure the UI dependencies are available (only in local dev/clone)
+        const nextPath = path.join(cwd, 'node_modules', 'next');
+        if (!fs.existsSync(nextPath)) {
+            console.error(chalk.red('\n❌ エラー: UIの起動に必要な依存関係が見つかりません。'));
+            console.log(chalk.yellow('ダッシュボードを利用するには、リポジトリをクローンして `npm install` を実行してください。'));
+            console.log(chalk.gray('(グローバルインストール版は CLI 機能のみをサポートしています)\n'));
+            return;
+        }
+
+        console.log(chalk.green('✓ YARIKIRU OSS ダッシュボードを起動中... (http://localhost:3000)'));
         const serverProcess = spawnSync('npx', ['next', 'start'], { stdio: 'inherit', cwd });
         process.exit(serverProcess.status ?? 0);
     });

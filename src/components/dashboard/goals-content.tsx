@@ -10,6 +10,7 @@ import {
     Check,
     Copy,
     ChevronDown,
+    RefreshCw,
 } from 'lucide-react'
 import { UrgentTaskCard } from './urgent-task-card'
 import { SystemStateCard } from './system-state-card'
@@ -139,6 +140,9 @@ export function GoalsContent({
     onUndoGoal,
     onOpenPlanModal,
     onArchiveProject,
+    onGsdSync,
+    gsdSyncLoading,
+    gsdSyncError,
 }: {
     projects: Project[]
     isLoading: boolean
@@ -152,6 +156,9 @@ export function GoalsContent({
     onUndoGoal: (goalId: string) => Promise<void>
     onOpenPlanModal: () => void
     onArchiveProject: (projectId: string) => Promise<void>
+    onGsdSync?: () => Promise<void>
+    gsdSyncLoading?: boolean
+    gsdSyncError?: string | null
 }) {
     const { getDisplayTerm } = useGlossary()
     const [scheduling, setScheduling] = useState(false)
@@ -215,6 +222,25 @@ export function GoalsContent({
                     </p>
                 </div>
             </div>
+
+            {onGsdSync && (
+                <div className="mb-6 flex items-center justify-center gap-2">
+                    <button
+                        type="button"
+                        onClick={onGsdSync}
+                        disabled={gsdSyncLoading}
+                        className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-300 disabled:opacity-50 transition-colors"
+                    >
+                        <RefreshCw size={14} className={gsdSyncLoading ? 'animate-spin' : ''} />
+                        {gsdSyncLoading ? '同期中...' : 'GSD Sync'}
+                    </button>
+                    {gsdSyncError && (
+                        <span className="text-xs text-amber-600 max-w-[200px] truncate" title={gsdSyncError}>
+                            {gsdSyncError}
+                        </span>
+                    )}
+                </div>
+            )}
 
             {projects.length > 0 && projects[0].systemStateMd && (
                 <SystemStateCard

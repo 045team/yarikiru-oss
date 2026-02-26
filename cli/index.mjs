@@ -1299,90 +1299,59 @@ program
         }
     })
 
+async function runSync(baseDir = process.cwd()) {
+    const { readPlanning } = await import('../src/lib/gsd/read-planning.ts')
+    const data = readPlanning(baseDir)
+    if (!data) {
+        throw new Error('.planning フォルダが見つかりません')
+    }
+    const { projectData, goalsData, stateData } = data
+    const result = await executeOperation('syncPlanning', { projectData, goalsData, stateData })
+    return { ...result, goalsCount: goalsData.length }
+}
+
 program
     .command('sync')
     .description('GSDの .planning フォルダを読み込み、Yarikiruデータベースに同期します')
-    .action(async () => {
-        const spinner = ora('.planning フォルダを同期中...').start()
-        try {
-            const planningDir = path.join(process.cwd(), '.planning')
-            if (!fs.existsSync(planningDir)) {
+    .option('-w, --watch', '.planning の変更を監視し、自動で同期します')
+    .action(async (opts) => {
+        const baseDir = process.cwd()
+        if (opts.watch) {
+            const chokidar = await import('chokidar')
+            const watcher = chokidar.watch(path.join(baseDir, '.planning'), {
+                ignored: /(^|[\/\\])\../,
+                persistent: true,
+                ignoreInitial: false,
+            })
+            let syncTimer = null
+            const DEBOUNCE_MS = 800
+            const doSync = async () => {
+                try {
+                    const spinner = ora('.planning を同期中...').start()
+                    const result = await runSync(baseDir)
+                    spinner.succeed(`同期完了 (Project: ${result.projectId}, ${result.goalsCount} phases)`)
+                    console.log(chalk.dim('  .planning の変更を監視中... (Ctrl+C で終了)'))
+                } catch (err) {
+                    console.log(chalk.yellow('  .planning が見つかりません。作成されるまで待機します...'))
+                }
+            }
+            watcher.on('all', () => {
+                if (syncTimer) clearTimeout(syncTimer)
+                syncTimer = setTimeout(doSync, DEBOUNCE_MS)
+            })
+            console.log(chalk.bold.cyan('🔄 .planning 監視を開始しました'))
+            await doSync()
+        } else {
+            const spinner = ora('.planning フォルダを同期中...').start()
+            try {
+                const result = await runSync(baseDir)
+                spinner.succeed('同期が完了しました (Project: ' + result.projectId + ')')
+                console.log(chalk.green(`  => ${result.goalsCount}個の目標 (Phases) を同期しました。`))
+            } catch (err) {
                 spinner.fail('.planning フォルダが見つかりません。')
                 console.error(chalk.yellow('GSDプロジェクトのルートで実行してください。'))
-                return
+                console.error(chalk.red(err.message))
             }
-
-            // PROJECT.md
-            let projectTitle = 'GSD Project'
-            let projectDescription = ''
-            const projectFile = path.join(planningDir, 'PROJECT.md')
-            if (fs.existsSync(projectFile)) {
-                projectDescription = fs.readFileSync(projectFile, 'utf8')
-                const titleMatch = projectDescription.match(/^#\s+(.+)$/m)
-                if (titleMatch) projectTitle = titleMatch[1]
-            }
-
-            const projectData = { title: projectTitle, description: projectDescription }
-
-            // goals/phases
-            const goalsData = []
-            const phasesDir = path.join(planningDir, 'phases')
-            if (fs.existsSync(phasesDir)) {
-                const phases = fs.readdirSync(phasesDir).filter(f => fs.statSync(path.join(phasesDir, f)).isDirectory())
-                for (const phaseName of phases) {
-                    const phasePath = path.join(phasesDir, phaseName)
-                    let phaseDesc = ''
-                    const tasks = []
-
-                    const files = fs.readdirSync(phasePath)
-                    const planFile = files.find(f => f.endsWith('-PLAN.md'))
-
-                    if (planFile) {
-                        const planContent = fs.readFileSync(path.join(phasePath, planFile), 'utf8')
-                        phaseDesc = planContent
-
-                        // task XML chunks
-                        const taskMatches = planContent.match(/<task>([\s\S]*?)<\/task>/g)
-                        if (taskMatches) {
-                            for (const tMatch of taskMatches) {
-                                const content = tMatch.replace(/<\/?task>/g, '').trim()
-                                tasks.push({ label: content.substring(0, 100), status: 'todo' })
-                            }
-                        } else {
-                            // Checklists fallback
-                            const checkMatches = [...planContent.matchAll(/^- \[(x| )\] (.+)$/gm)]
-                            for (const m of checkMatches) {
-                                tasks.push({ label: m[2], status: m[1] === 'x' ? 'done' : 'todo' })
-                            }
-                        }
-                    }
-                    goalsData.push({ title: phaseName, description: phaseDesc, tasks })
-                }
-            } else {
-                const roadmapFile = path.join(planningDir, 'ROADMAP.md')
-                if (fs.existsSync(roadmapFile)) {
-                    goalsData.push({
-                        title: 'Phase from ROADMAP',
-                        description: fs.readFileSync(roadmapFile, 'utf8'),
-                        tasks: []
-                    })
-                }
-            }
-
-            // Read STATE.md
-            let stateData = null
-            const stateFile = path.join(planningDir, 'STATE.md')
-            if (fs.existsSync(stateFile)) {
-                stateData = fs.readFileSync(stateFile, 'utf8')
-            }
-
-            const result = await executeOperation('syncPlanning', { projectData, goalsData, stateData })
-            spinner.succeed('同期が完了しました (Project: ' + result.projectId + ')')
-            console.log(chalk.green(`  => ${goalsData.length}個の目標 (Phases) を同期しました。`))
-
-        } catch (err) {
-            spinner.fail('同期に失敗しました')
-            console.error(chalk.red(err.message))
         }
     })
 

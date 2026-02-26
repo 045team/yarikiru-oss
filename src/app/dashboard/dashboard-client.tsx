@@ -406,6 +406,30 @@ export function DashboardClient() {
     setPlanModalOpen(true)
   }
 
+  const [gsdSyncLoading, setGsdSyncLoading] = useState(false)
+  const [gsdSyncError, setGsdSyncError] = useState<string | null>(null)
+  const handleGsdSync = async () => {
+    setGsdSyncError(null)
+    setGsdSyncLoading(true)
+    try {
+      const res = await fetch('/api/planning/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({}),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(data?.error || `Sync failed (${res.status})`)
+      }
+      await refreshProjects()
+    } catch (e) {
+      setGsdSyncError(e instanceof Error ? e.message : 'Sync failed')
+    } finally {
+      setGsdSyncLoading(false)
+    }
+  }
+
   // 思いつきキャプチャーハンドラー
   const handleQuickCapture = async (text: string) => {
     try {
@@ -598,6 +622,9 @@ export function DashboardClient() {
                   onUndoGoal={handleUndoGoal}
                   onOpenPlanModal={() => setPlanModalOpen(true)}
                   onArchiveProject={handleArchiveProject}
+                  onGsdSync={handleGsdSync}
+                  gsdSyncLoading={gsdSyncLoading}
+                  gsdSyncError={gsdSyncError}
                 />
                 {learningModal && (
                   <LearningModal

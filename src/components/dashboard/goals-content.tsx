@@ -11,14 +11,109 @@ import {
     Copy,
     ChevronDown,
     RefreshCw,
+    FolderPlus,
 } from 'lucide-react'
 import { UrgentTaskCard } from './urgent-task-card'
 import { SystemStateCard } from './system-state-card'
+import { GSDPhasesCard } from './gsd-phases-card'
+import { Minus, AlertTriangle, X } from 'lucide-react'
 import { Project, Goal, SubTask } from '@/types/dashboard'
 import RotatingText from '@/components/RotatingText'
 import { fireTaskEffect, fireGoalEffect } from '@/lib/utils/completion-effects'
 import { useGlossary } from '@/contexts/display-context'
 import { CopyablePrompt } from '@/components/ui/copyable-prompt'
+
+// --- プロジェクト追加セクション（フォルダ選択ボタン） ---
+function AddProjectSection({
+    onSelectFolder,
+    addLoading,
+    addError,
+}: {
+    onSelectFolder: () => Promise<void>
+    addLoading: boolean
+    addError: string | null
+}) {
+    return (
+        <div className="text-center">
+            <p className="text-sm text-gray-500 mb-4">
+                プロジェクトのフォルダを選択
+            </p>
+            <button
+                type="button"
+                onClick={onSelectFolder}
+                disabled={addLoading}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#d97756] hover:bg-[#d97756]/90 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors shadow-sm"
+            >
+                {addLoading ? <RefreshCw size={20} className="animate-spin" /> : <FolderPlus size={20} />}
+                {addLoading ? '追加中...' : 'フォルダを選択'}
+            </button>
+            {addError && (
+                <p className="mt-2 text-xs text-amber-600 max-w-xl mx-auto">
+                    {addError}
+                </p>
+            )}
+            <p className="mt-3 text-xs text-gray-400">
+                Finder で GSD プロジェクトのルートフォルダを選んでください
+            </p>
+        </div>
+    )
+}
+
+// --- 削除確認モーダル ---
+function DeleteConfirmModal({
+    isOpen,
+    projectTitle,
+    onConfirm,
+    onCancel,
+    isDeleting,
+}: {
+    isOpen: boolean
+    projectTitle: string
+    onConfirm: () => void
+    onCancel: () => void
+    isDeleting: boolean
+}) {
+    if (!isOpen) return null
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                        <div className="p-2 rounded-full bg-red-100">
+                            <AlertTriangle size={24} className="text-red-500" />
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900">プロジェクトを削除</h3>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-2">
+                        <span className="font-semibold text-gray-900">{projectTitle}</span> を削除しますか？
+                    </p>
+                    <p className="text-xs text-gray-400">
+                        プロジェクト自体は削除されず、ダッシュボードから除外されるだけです。
+                    </p>
+                </div>
+                <div className="flex border-t border-gray-100">
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        disabled={isDeleting}
+                        className="flex-1 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                        キャンセル
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onConfirm}
+                        disabled={isDeleting}
+                        className="flex-1 py-3 text-sm font-bold text-red-500 hover:bg-red-50 transition-colors border-l border-gray-100 disabled:opacity-50"
+                    >
+                        {isDeleting ? '削除中...' : '削除する'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+}
 
 // --- ゴールIDコピーボタン ---
 function GoalCopyButton({ goalId, title }: { goalId: string; title: string }) {
@@ -143,6 +238,9 @@ export function GoalsContent({
     onGsdSync,
     gsdSyncLoading,
     gsdSyncError,
+    onSelectFolder,
+    addProjectLoading,
+    addProjectError,
 }: {
     projects: Project[]
     isLoading: boolean
@@ -159,6 +257,9 @@ export function GoalsContent({
     onGsdSync?: () => Promise<void>
     gsdSyncLoading?: boolean
     gsdSyncError?: string | null
+    onSelectFolder?: () => Promise<void>
+    addProjectLoading?: boolean
+    addProjectError?: string | null
 }) {
     const { getDisplayTerm } = useGlossary()
     const [scheduling, setScheduling] = useState(false)
@@ -168,6 +269,21 @@ export function GoalsContent({
         setOpenDoneMap(prev => ({ ...prev, [projectId]: !prev[projectId] }))
 
     const urgentGoal = projects.flatMap(p => p.goals).find(g => g.isUrgent) ?? null
+
+    // 削除モーダル用state
+    const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
+
+    const handleDeleteConfirm = async () => {
+        if (!deleteTarget) return
+        setIsDeleting(true)
+        try {
+            await onArchiveProject(deleteTarget.id)
+            setDeleteTarget(null)
+        } finally {
+            setIsDeleting(false)
+        }
+    }
 
     return (
         <div className="flex flex-1 flex-col animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -204,25 +320,78 @@ export function GoalsContent({
                 </div>
             </header>
 
-            <div className="mb-8 md:mb-12">
-                {/* Quick Captureへの誘導 */}
-                <div className="text-center">
-                    <p className="text-sm text-gray-500 mb-4">
-                        ふと浮かんだアイデアは？
-                    </p>
-                    <button
-                        onClick={() => window.location.href = '/capture'}
-                        className="inline-flex items-center gap-2 bg-gradient-to-r from-[#d97756] to-[#b45309] text-white px-6 py-3 rounded-full font-medium hover:shadow-lg transition-all"
-                    >
-                        <Plus size={20} />
-                        思いつきをキャプチャー
-                    </button>
-                    <p className="mt-3 text-xs text-gray-400">
-                        携帯でメモ → PCで登録 → タスク分解
-                    </p>
+            {/* 目標コンテンツ（GSDフェーズ・緊急タスク）をプロジェクトより上に配置 */}
+            {urgentGoal && (
+                <div className="mb-8 md:mb-16">
+                    <UrgentTaskCard urgentGoal={urgentGoal} onStartFocus={onStartFocus} />
                 </div>
+            )}
+
+            {projects.length > 0 && projects.map((project) =>
+                project.planningPath ? (
+                    <GSDPhasesCard
+                        key={project.id}
+                        projectTitle={project.title}
+                        planningPath={project.planningPath}
+                    />
+                ) : (project.goals?.length ?? 0) > 0 ? (
+                    <GSDPhasesCard
+                        key={project.id}
+                        projectTitle={project.title}
+                        goals={project.goals}
+                        phaseContents={project.phaseContents ?? undefined}
+                    />
+                ) : project.systemStateMd ? (
+                    <SystemStateCard
+                        key={project.id}
+                        projectTitle={project.title}
+                        systemStateMd={project.systemStateMd}
+                        planningPath={null}
+                    />
+                ) : null
+            )}
+
+            <div className="mb-8 md:mb-12">
+                {/* プロジェクトを追加 - フォルダパスで .planning を検出し追加 */}
+                {onSelectFolder && (
+                    <AddProjectSection
+                        onSelectFolder={onSelectFolder}
+                        addLoading={addProjectLoading ?? false}
+                        addError={addProjectError ?? null}
+                    />
+                )}
             </div>
 
+            {/* プロジェクト一覧（シンプル表示） */}
+            {projects.length > 0 && (
+                <div className="mb-8 space-y-3">
+                    <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wider mb-4">プロジェクト一覧</h3>
+                    {projects.map((project) => (
+                        <div
+                            key={project.id}
+                            className="group relative flex items-center justify-between rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm hover:shadow-md transition-shadow"
+                        >
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-2 h-2 rounded-full bg-[#d97756] shrink-0" />
+                                <span className="font-medium text-gray-800 truncate">{project.title}</span>
+                                {project.planningPath && (
+                                    <span className="text-xs text-gray-400 truncate max-w-[200px]">{project.planningPath}</span>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setDeleteTarget({ id: project.id, title: project.title }); }}
+                                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-50 text-gray-300 hover:text-red-500 transition-all"
+                                title="プロジェクトを削除"
+                            >
+                                <Minus size={16} strokeWidth={2} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* GSD Sync ボタン */}
             {onGsdSync && (
                 <div className="mb-6 flex items-center justify-center gap-2">
                     <button
@@ -242,19 +411,6 @@ export function GoalsContent({
                 </div>
             )}
 
-            {projects.length > 0 && projects[0].systemStateMd && (
-                <SystemStateCard
-                    projectTitle={projects[0].title}
-                    systemStateMd={projects[0].systemStateMd}
-                />
-            )}
-
-            {urgentGoal && (
-                <div className="mb-8 md:mb-16">
-                    <UrgentTaskCard urgentGoal={urgentGoal} onStartFocus={onStartFocus} />
-                </div>
-            )}
-
             <div className="flex flex-1 flex-col space-y-8 md:space-y-16 pb-24">
                 {isLoading ? (
                     <div className="py-12 text-center text-sm text-gray-400">読込中...</div>
@@ -264,6 +420,15 @@ export function GoalsContent({
                     </div>
                 ) : null}
             </div>
+
+            {/* 削除確認モーダル */}
+            <DeleteConfirmModal
+                isOpen={!!deleteTarget}
+                projectTitle={deleteTarget?.title || ''}
+                onConfirm={handleDeleteConfirm}
+                onCancel={() => setDeleteTarget(null)}
+                isDeleting={isDeleting}
+            />
         </div>
     )
 }

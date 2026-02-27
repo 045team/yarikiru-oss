@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import path from 'path'
 import { auth } from '@/lib/auth-stub'
-import { getTursoClient } from '@/lib/turso/client'
+import { getTursoClient, ensureDbSchema } from '@/lib/turso/client'
 import { mcpSyncPlanning } from '@/lib/mcp/core-operations'
 import { readPlanning } from '@/lib/gsd/read-planning'
 
@@ -45,8 +45,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    await ensureDbSchema()
     const db = getTursoClient()
-    const result = await mcpSyncPlanning(db, data, userId)
+    const result = await mcpSyncPlanning(db, { ...data, planningPath: baseDir }, userId)
 
     return NextResponse.json({
       success: true,

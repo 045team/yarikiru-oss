@@ -20,10 +20,16 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-// Resolve the project root (works regardless of whether we're running from
-// src/lib/mcp/ or a compiled dist directory).
-const PROJECT_ROOT = join(__dirname, '../../..')
-const MIGRATIONS_DIR = join(PROJECT_ROOT, 'turso/migrations')
+// Resolve the project root (works from src/, .next/, or cli dist).
+function getMigrationsDir(): string {
+    const fromDir = join(dirname(__filename), '../../..')
+    const candidate = join(fromDir, 'turso/migrations')
+    if (existsSync(candidate)) return candidate
+    const fromCwd = join(process.cwd(), 'turso/migrations')
+    if (existsSync(fromCwd)) return fromCwd
+    return candidate
+}
+const MIGRATIONS_DIR = getMigrationsDir()
 
 /**
  * Run pending migrations on the given `@libsql/client` database instance.

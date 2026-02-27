@@ -7,6 +7,8 @@ export const yarikiruProjects = sqliteTable('yarikiru_projects', {
     title: text('title').notNull(),
     description: text('description'),
     systemStateMd: text('system_state_md'),
+    planningPath: text('planning_path'),
+    phaseContents: text('phase_contents'),
     status: text('status', { enum: ['active', 'completed', 'archived'] }).default('active').notNull(),
     workspaceId: text('workspace_id'),
     createdAt: text('created_at').default(sql`(datetime('now'))`).notNull(),

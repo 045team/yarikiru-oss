@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@/lib/auth-stub'
-import { getTursoClient as createClient } from '../../../lib/turso/client'
+import { getTursoClient, ensureDbSchema } from '../../../lib/turso/client'
 import { predictTimeByCategory, formatHistoricalGoals } from '@/lib/ai/predict-time'
 import { encryptForDb, decryptFromDb } from '@/lib/e2ee'
 
 async function getDb() {
-  return createClient({
-    url: process.env.TURSO_DATABASE_URL!,
-    authToken: process.env.TURSO_AUTH_TOKEN!,
-  })
+  await ensureDbSchema()
+  return getTursoClient()
 }
 
 export async function GET(request: NextRequest) {
@@ -37,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     const projectsResult = await db.execute({
       sql: `
-        SELECT id, title, description, status, created_at, system_state_md
+        SELECT id, title, description, status, created_at, system_state_md, planning_path, phase_contents
         FROM yarikiru_projects
         WHERE ${whereClause}
         ORDER BY created_at DESC
@@ -52,6 +50,8 @@ export async function GET(request: NextRequest) {
       status: string
       createdAt: string
       systemStateMd: string | null
+      planningPath: string | null
+      phaseContents: Record<string, { plan?: string; summary?: string; verification?: string }> | null
       goals: Array<{
         id: string
         title: string
@@ -126,6 +126,23 @@ export async function GET(request: NextRequest) {
         projectStatus = 'completed'
       }
 
+      let phaseContents: Record<string, { plan?: string; summary?: string; verification?: string }> | null = null
+      const rawPhaseContents = row[7]
+      if (rawPhaseContents && typeof rawPhaseContents === 'string') {
+        try {
+          const dec = await decryptFromDb(rawPhaseContents)
+          const parsed = dec ? JSON.parse(dec) : null
+          if (parsed && typeof parsed === 'object') phaseContents = parsed
+        } catch {
+          try {
+            const parsed = JSON.parse(rawPhaseContents)
+            if (parsed && typeof parsed === 'object') phaseContents = parsed
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+
       projects.push({
         id: projectId,
         title: await decryptFromDb(row[1] as string),
@@ -133,6 +150,8 @@ export async function GET(request: NextRequest) {
         status: projectStatus,
         createdAt: row[4] as string,
         systemStateMd: row[5] ? await decryptFromDb(String(row[5])) : null,
+        planningPath: row[6] ? String(row[6]) : null,
+        phaseContents,
         goals,
         progress: {
           total: totalGoals,

@@ -165,7 +165,7 @@ export async function decryptFromDb(encryptedText: string): Promise<string> {
         return await decryptText(base64Data, key);
     } catch (error) {
         console.error('Failed to decrypt data:', error);
-        // Fallback to returning original text if decryption fails
-        return encryptedText;
+        // 復号失敗時は空文字を返す（暗号化済みのまま返すと UI が崩れるため）
+        return '';
     }
 }

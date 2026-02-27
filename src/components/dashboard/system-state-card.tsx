@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Activity, MapPin, Zap, CheckCircle2, ChevronRight, PlayCircle, FileText, Check, Clock, Circle, Database, Server, Bot, Layout, Rocket, Copy, ChevronDown, History } from 'lucide-react'
+import { MapPin, Zap, CheckCircle2, PlayCircle, FileText, Check, Clock, Circle, Database, Server, Bot, Layout, Rocket, Copy, ChevronDown, History, FileSearch } from 'lucide-react'
+import { PhaseDetailModal } from './phase-detail-modal'
 
 // --- Types ---
 interface Task {
@@ -13,29 +14,31 @@ interface Task {
 
 interface Phase {
     id: string;
+    /** フェーズフォルダ名のプレフィックス（例: 01, 02）API で phase 詳細取得に使用 */
+    phaseIdPrefix?: string;
     title: string;
     status: 'completed' | 'in-progress' | 'pending';
     icon: string;
     tasks: Task[];
 }
 
-// Accordion component for all completed phases
-function CompletedPhasesAccordion({ phases }: { phases: Phase[] }) {
-    const [isOpen, setIsOpen] = useState(false);
+// Accordion component for all completed phases - 振り返り・管理しやすく
+function CompletedPhasesAccordion({
+    phases,
+    planningPath,
+    onPhaseDetail,
+}: { phases: Phase[]; planningPath?: string | null; onPhaseDetail: (phase: Phase) => void }) {
+    const [isOpen, setIsOpen] = useState(true); // デフォルト展開で振り返りしやすく
     const completedPhases = phases.filter(p => p.status === 'completed');
 
     if (completedPhases.length === 0) return null;
 
     return (
         <div className="relative pl-8 md:pl-10 mb-10">
-            {/* Timeline Node */}
             <div className="absolute -left-[17px] top-4 w-8 h-8 rounded-full flex items-center justify-center border-4 border-white bg-[#5b8767]">
                 <Check className="w-4 h-4 text-white" strokeWidth={3} />
             </div>
-
-            {/* Accordion Card */}
             <div className="bg-gradient-to-br from-[#5b8767]/5 to-[#5b8767]/0 rounded-2xl border border-[#5b8767]/20 overflow-hidden transition-all hover:shadow-md">
-                {/* Header - Always Visible */}
                 <button
                     onClick={() => setIsOpen(!isOpen)}
                     className="w-full flex flex-col sm:flex-row sm:items-center gap-3 p-5 text-left hover:bg-white/30 transition-colors"
@@ -44,7 +47,7 @@ function CompletedPhasesAccordion({ phases }: { phases: Phase[] }) {
                         <History className="w-5 h-5 md:w-6 md:h-6" />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <h3 className="text-base font-extrabold text-gray-700 font-japanese-display">完了済みフェーズ</h3>
+                        <h3 className="text-base font-extrabold text-gray-700 font-japanese-display">完了済みフェーズ（振り返り）</h3>
                         <div className="flex items-center gap-2 mt-1">
                             <span className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full bg-[#5b8767]/10 text-[#5b8767]">
                                 {completedPhases.length} フェーズ完了
@@ -58,17 +61,26 @@ function CompletedPhasesAccordion({ phases }: { phases: Phase[] }) {
                         <ChevronDown size={16} className="text-[#5b8767]/70" />
                     </div>
                 </button>
-
-                {/* Expandable Content */}
                 {isOpen && (
                     <div className="px-5 pb-5 border-t border-[#5b8767]/10 bg-white/30 space-y-4">
                         {completedPhases.map((phase) => (
-                            <div key={phase.id} className="pt-4">
-                                <div className="flex items-center gap-2 mb-3">
+                            <div key={phase.id} className="pt-4 group/phase">
+                                <div className="flex items-center gap-2 mb-3 flex-wrap">
                                     <div className="p-1.5 rounded-lg bg-[#5b8767]/10 text-[#5b8767]">
                                         {IconMap[phase.icon] || IconMap['FileText']}
                                     </div>
                                     <h4 className="text-sm font-bold text-gray-600 font-japanese-display">{phase.title}</h4>
+                                    {phase.phaseIdPrefix && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); onPhaseDetail(phase); }}
+                                            className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-[#5b8767]/30 hover:border-[#5b8767] hover:bg-[#5b8767]/5 text-[#5b8767] text-[10px] font-bold transition-colors"
+                                            title="Plan / Summary / Verification を表示"
+                                        >
+                                            <FileSearch size={12} />
+                                            詳細
+                                        </button>
+                                    )}
                                     <PhaseCopyButton phaseTitle={phase.title} />
                                 </div>
                                 <ul className="space-y-2 ml-9">
@@ -101,7 +113,8 @@ function CompletedPhasesAccordion({ phases }: { phases: Phase[] }) {
 
 function PhaseCopyButton({ phaseTitle }: { phaseTitle: string }) {
     const [copied, setCopied] = React.useState(false);
-    const handleCopy = () => {
+    const handleCopy = (e: React.MouseEvent) => {
+        e.stopPropagation();
         const match = phaseTitle.match(/Phase\s*(\d+)/i) || phaseTitle.match(/フェーズ\s*(\d+)/i);
         const arg = match ? match[1] : `"${phaseTitle}"`;
         navigator.clipboard.writeText(`/gsd:execute-phase ${arg}`);
@@ -155,6 +168,15 @@ function guessIconForTitle(title: string): string {
     return 'FileText'; // Default
 }
 
+/** "Phase 01: ..." から "01"、"01-local-db-foundation" から "01-local-db-foundation" を抽出 */
+function extractPhaseIdPrefix(title: string): string | null {
+    const phaseNum = title.match(/Phase\s*(\d+)/i) || title.match(/フェーズ\s*(\d+)/i);
+    if (phaseNum) return phaseNum[1];
+    const folderMatch = title.match(/^(\d{2}(?:-\w+)*)/);
+    if (folderMatch) return folderMatch[1];
+    return null;
+}
+
 function guessStatusFromTitle(title: string): 'completed' | 'in-progress' | 'pending' {
     const t = title.toLowerCase();
     if (t.includes('完了') || t.includes('completed') || t.includes('done')) return 'completed';
@@ -182,11 +204,11 @@ function parseStateMd(md: string): ParsedState {
         // Section Detectors
         if (line.startsWith('## Current Position')) {
             inPosition = true; inSession = false; inPhases = false; continue;
-        } else if (line.startsWith('## 🔄 Last Session') || line.startsWith('## Last Session')) {
+        } else if (line.startsWith('## 🔄 Last Session') || line.startsWith('## Last Session') || line.startsWith('## 🔄 最終セッション')) {
             inSession = true; inPosition = false; inPhases = false;
             if (currentPhase) { phases.push(currentPhase); currentPhase = null; }
             continue;
-        } else if (line.startsWith('## ✅ Completed') || line.startsWith('## 📋 Next Candidates') || line.startsWith('## Completed') || line.startsWith('## Next') || line.startsWith('## ✅ 完了') || line.startsWith('## 📋 次期') || line.startsWith('## 📋 次の') || line.startsWith('## 📋 今後の')) {
+        } else if (line.startsWith('## Active Phases') || line.startsWith('## ✅ Completed') || line.startsWith('## 📋 Next Candidates') || line.startsWith('## Completed') || line.startsWith('## Next') || line.startsWith('## ✅ 完了') || line.startsWith('## 📋 次期') || line.startsWith('## 📋 次の') || line.startsWith('## 📋 今後の')) {
             inPhases = true; inPosition = false; inSession = false;
 
             // if "Next Candidates", maybe add a special phase
@@ -211,9 +233,9 @@ function parseStateMd(md: string): ParsedState {
         // Parse Last Session
         if (inSession) {
             if (line.startsWith('>')) continue;
-            if (line.startsWith('Saved at:')) { lastSession.savedAt = line.replace('Saved at:', '').trim(); continue; }
-            if (line.startsWith('Active Goal:')) { lastSession.activeGoal = line.replace('Active Goal:', '').trim(); continue; }
-            if (line.startsWith('What was done:')) continue;
+            if (line.startsWith('Saved at:') || line.startsWith('保存日時:')) { lastSession.savedAt = (line.replace(/^(Saved at:|保存日時:)/, '').trim()); continue; }
+            if (line.startsWith('Active Goal:') || line.startsWith('作業中の目標:')) { lastSession.activeGoal = (line.replace(/^(Active Goal:|作業中の目標:)/, '').trim()); continue; }
+            if (line.startsWith('What was done:') || line.startsWith('やったこと:')) continue;
             if (line.startsWith('Changed files:')) {
                 lastSession.whatWasDone = whatWasDoneBuffer.join('\n').trim();
                 inSession = false;
@@ -231,8 +253,10 @@ function parseStateMd(md: string): ParsedState {
                 if (currentPhase) phases.push(currentPhase);
 
                 const title = line.replace('### ', '').trim();
+                const phaseIdPrefix = extractPhaseIdPrefix(title);
                 currentPhase = {
-                    id: Math.random().toString(36).substr(2, 9),
+                    id: phaseIdPrefix || Math.random().toString(36).substr(2, 9),
+                    phaseIdPrefix: phaseIdPrefix || undefined,
                     title: title,
                     status: guessStatusFromTitle(title),
                     icon: guessIconForTitle(title),
@@ -314,7 +338,12 @@ function parseStateMd(md: string): ParsedState {
 }
 
 // --- Component ---
-export function SystemStateCard({ projectTitle, systemStateMd }: { projectTitle: string, systemStateMd: string | null | undefined }) {
+export function SystemStateCard({
+    projectTitle,
+    systemStateMd,
+    planningPath,
+}: { projectTitle: string; systemStateMd: string | null | undefined; planningPath?: string | null }) {
+    const [phaseDetail, setPhaseDetail] = useState<Phase | null>(null);
     if (!systemStateMd) return null;
 
     const parsed = parseStateMd(systemStateMd);
@@ -359,10 +388,12 @@ export function SystemStateCard({ projectTitle, systemStateMd }: { projectTitle:
                         </h4>
 
                         <div className="relative border-l-2 border-gray-100 ml-4 space-y-10 pb-4">
-                            {/* Completed Phases Accordion */}
-                            <CompletedPhasesAccordion phases={parsed.phases} />
+                            <CompletedPhasesAccordion
+                                phases={parsed.phases}
+                                planningPath={planningPath}
+                                onPhaseDetail={setPhaseDetail}
+                            />
 
-                            {/* Active Phases */}
                             {parsed.phases.filter(p => p.status !== 'completed').map((phase) => (
                                 <div key={phase.id} className="relative pl-8 md:pl-10">
                                     {/* Timeline Node */}
@@ -376,15 +407,26 @@ export function SystemStateCard({ projectTitle, systemStateMd }: { projectTitle:
                                             <div className="p-2.5 rounded-xl shrink-0 bg-[#d97756]/10 text-[#d97756]">
                                                 {IconMap[phase.icon] || IconMap['FileText']}
                                             </div>
-                                            <div>
+                                            <div className="flex-1 min-w-0">
                                                 <h3 className="text-base font-extrabold text-gray-900 font-japanese-display">{phase.title}</h3>
-                                                <div className="flex items-center gap-2 mt-1">
+                                                <div className="flex items-center gap-2 mt-1 flex-wrap">
                                                     <span className="text-[9px] font-bold tracking-widest uppercase px-2 py-0.5 rounded-full bg-[#d97756]/10 text-[#d97756]">
                                                         {phase.status === 'in-progress' ? '進行中' : '準備中'}
                                                     </span>
                                                     <span className="text-[10px] text-gray-400 font-medium">
                                                         {phase.tasks.filter(t => t.completed).length}/{phase.tasks.length} タスク完了
                                                     </span>
+                                                    {phase.phaseIdPrefix && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setPhaseDetail(phase)}
+                                                            className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-[#d97756]/30 hover:border-[#d97756] hover:bg-[#d97756]/5 text-[#d97756] text-[10px] font-bold transition-colors"
+                                                            title="Plan / Summary / Verification を表示"
+                                                        >
+                                                            <FileSearch size={12} />
+                                                            詳細
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                             <PhaseCopyButton phaseTitle={phase.title} />
@@ -419,6 +461,16 @@ export function SystemStateCard({ projectTitle, systemStateMd }: { projectTitle:
                     </div>
                 </div>
             </div>
+
+            {phaseDetail?.phaseIdPrefix && (
+                <PhaseDetailModal
+                    isOpen={!!phaseDetail}
+                    onClose={() => setPhaseDetail(null)}
+                    phaseIdPrefix={phaseDetail.phaseIdPrefix}
+                    phaseTitle={phaseDetail.title}
+                    planningPath={planningPath}
+                />
+            )}
         </div>
     )
 }

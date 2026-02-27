@@ -2356,16 +2356,15 @@ export async function mcpGenerateWeeklyReport(db: any, args: any, userId: string
 // ============================================
 
 export async function mcpSyncPlanning(dbClient: any, args: any, userId: string) {
-    const { projectData, goalsData, stateData } = args;
+    const { projectData, goalsData, stateData, planningPath, forceCreate } = args;
     if (!projectData) throw new Error('projectData is required');
     if (!goalsData || !Array.isArray(goalsData)) throw new Error('goalsData array is required');
 
-    // Use Drizzle for safe DB access
     // @ts-ignore - DB Client uses wrapper or drizzle
     const db = drizzle(dbClient, { schema });
 
-    // 1. PROJECT SYNC -- Update the latest active project or create if none exists
-    const projects = await db
+    // 1. PROJECT SYNC -- Match by planningPath or use latest active
+    let projects = await db
         .select()
         .from(schema.yarikiruProjects)
         .where(
@@ -2374,15 +2373,46 @@ export async function mcpSyncPlanning(dbClient: any, args: any, userId: string) 
                 eq(schema.yarikiruProjects.status, 'active')
             )
         )
-        .orderBy(desc(schema.yarikiruProjects.createdAt))
-        .limit(1);
+        .orderBy(desc(schema.yarikiruProjects.createdAt));
 
-    let projectId;
+    let projectId: string;
     const encProjectTitle = await encryptForDb(projectData.title || 'GSD Project');
     const encProjectDesc = projectData.description ? await encryptForDb(projectData.description) : null;
     const encStateData = stateData ? await encryptForDb(stateData) : null;
 
-    if (projects.length === 0) {
+    const phaseContentsObj: Record<string, { plan?: string; summary?: string; verification?: string }> = {};
+    for (const p of goalsData) {
+        if (p.plan || p.summary || p.verification || p.description) {
+            phaseContentsObj[p.title] = {
+                plan: p.plan ?? p.description ?? '',
+                summary: p.summary ?? '',
+                verification: p.verification ?? '',
+            };
+        }
+    }
+    const encPhaseContents = Object.keys(phaseContentsObj).length > 0
+        ? await encryptForDb(JSON.stringify(phaseContentsObj))
+        : null;
+
+    const resolvedPath = planningPath ? String(planningPath) : null;
+    const matchedByPath = resolvedPath
+        ? projects.find((p) => p.planningPath === resolvedPath)
+        : null;
+
+    if (matchedByPath) {
+        projectId = matchedByPath.id;
+        await db.update(schema.yarikiruProjects)
+            .set({
+                title: encProjectTitle,
+                description: encProjectDesc,
+                systemStateMd: encStateData,
+                planningPath: resolvedPath,
+                phaseContents: encPhaseContents,
+                updatedAt: sql`(datetime('now'))`
+            })
+            .where(eq(schema.yarikiruProjects.id, projectId));
+    } else if (resolvedPath || projects.length === 0 || forceCreate) {
+        // 新規 planningPath / プロジェクトなし / import 時は常に新規作成
         projectId = `p_${Date.now()}_sync`;
         await db.insert(schema.yarikiruProjects).values({
             id: projectId,
@@ -2390,14 +2420,19 @@ export async function mcpSyncPlanning(dbClient: any, args: any, userId: string) 
             title: encProjectTitle,
             description: encProjectDesc,
             systemStateMd: encStateData,
+            planningPath: resolvedPath,
+            phaseContents: encPhaseContents,
         });
     } else {
+        // 後方互換: planningPath なし & 既存プロジェクトあり → 最新を更新
         projectId = projects[0].id;
         await db.update(schema.yarikiruProjects)
             .set({
                 title: encProjectTitle,
                 description: encProjectDesc,
                 systemStateMd: encStateData,
+                planningPath: resolvedPath,
+                phaseContents: encPhaseContents,
                 updatedAt: sql`(datetime('now'))`
             })
             .where(eq(schema.yarikiruProjects.id, projectId));

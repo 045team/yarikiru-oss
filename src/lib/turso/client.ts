@@ -17,6 +17,17 @@ function getEnv(): TursoEnv {
 }
 
 let tursoClient: ReturnType<typeof createClient> | null = null
+let schemaEnsured = false
+
+async function ensureSchemaOnce(): Promise<void> {
+    if (schemaEnsured) return
+    const env = getEnv()
+    if (!env.TURSO_DATABASE_URL.startsWith('file:')) return
+    const client = getTursoClient()
+    const { ensureLocalDbSchema } = await import('@/lib/mcp/local-db-init')
+    await ensureLocalDbSchema(client)
+    schemaEnsured = true
+}
 
 export function getTursoClient() {
     if (tursoClient) {
@@ -39,6 +50,11 @@ export function getTursoClient() {
     })
 
     return tursoClient
+}
+
+/** ローカル DB 使用時にマイグレーションを実行（初回のみ）。API ルートで getDb の前に呼ぶ */
+export async function ensureDbSchema(): Promise<void> {
+    await ensureSchemaOnce()
 }
 
 // ============================================

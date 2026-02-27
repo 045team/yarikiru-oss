@@ -13,6 +13,7 @@ import {
   Settings,
   Menu,
   X,
+  Plus,
 } from 'lucide-react'
 // layout & tabs
 import { ActiveTab, Project, Learning, Goal } from '@/types/dashboard'
@@ -408,6 +409,46 @@ export function DashboardClient() {
 
   const [gsdSyncLoading, setGsdSyncLoading] = useState(false)
   const [gsdSyncError, setGsdSyncError] = useState<string | null>(null)
+  const [addProjectLoading, setAddProjectLoading] = useState(false)
+  const [addProjectError, setAddProjectError] = useState<string | null>(null)
+
+  const handleSelectFolder = async () => {
+    setAddProjectError(null)
+    setAddProjectLoading(true)
+    try {
+      if (!('showDirectoryPicker' in window)) {
+        throw new Error('フォルダ選択は Chrome / Edge でご利用ください。パス入力が必要な場合は yarikiru sync -p /path をご利用ください。')
+      }
+      const dirHandle = await (window as any).showDirectoryPicker({ startIn: 'documents' }).catch((e: unknown) => {
+        if (e instanceof Error && e.name === 'AbortError') return null
+        throw e
+      })
+      if (!dirHandle) return
+      const { readPlanningFromHandle } = await import('@/lib/gsd/read-planning-from-handle')
+      const data = await readPlanningFromHandle(dirHandle)
+      if (!data) {
+        throw new Error('.planning フォルダが見つかりません。GSD プロジェクトのルートを選択してください。')
+      }
+      const res = await fetch('/api/planning/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(data),
+      })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(result?.error || `追加に失敗しました (${res.status})`)
+      }
+      await refreshProjects()
+      setSidebarOpen(false)
+    } catch (e) {
+      setAddProjectError(e instanceof Error ? e.message : '追加に失敗しました')
+      throw e
+    } finally {
+      setAddProjectLoading(false)
+    }
+  }
+
   const handleGsdSync = async () => {
     setGsdSyncError(null)
     setGsdSyncLoading(true)
@@ -570,7 +611,7 @@ export function DashboardClient() {
           >
             <X size={24} strokeWidth={1.5} />
           </button>
-          <div className="mb-16 px-6">
+          <div className="mb-6 px-6">
             <img
               src="/logo.png"
               alt="YARIKIRU Logo"
@@ -578,21 +619,50 @@ export function DashboardClient() {
             />
           </div>
 
-          <div className="flex flex-col space-y-1">
-            <NavItem
-              icon={<Target size={16} strokeWidth={1.5} aria-hidden />}
-              label="目標"
-              glossaryLabel="Goal"
-              isActive={activeTab === 'goals'}
-              onClick={() => setActiveTab('goals')}
-            />
-            <NavItem
-              icon={<BookOpen size={16} strokeWidth={1.5} aria-hidden />}
-              label="メモ＆学習"
-              isActive={activeTab === 'learning'}
-              onClick={() => setActiveTab('learning')}
-            />
+          {/* 目標（先に表示） */}
+          <div className="flex flex-col space-y-1 shrink-0">
+            <div className="flex items-center gap-1">
+              <NavItem
+                icon={<Target size={16} strokeWidth={1.5} aria-hidden />}
+                label="目標"
+                glossaryLabel="Goal"
+                isActive={activeTab === 'goals'}
+                onClick={() => setActiveTab('goals')}
+              />
+              <button
+                type="button"
+                onClick={() => { handleSelectFolder(); }}
+                className="shrink-0 p-2 rounded-lg hover:bg-[#d97756]/10 text-[#d97756]"
+                title="プロジェクトのフォルダを追加"
+                aria-label="プロジェクトのフォルダを追加"
+              >
+                <Plus size={18} strokeWidth={2} />
+              </button>
+            </div>
           </div>
+
+          {/* プロジェクト一覧 - 目標の下に配置 */}
+          {projects.length > 0 && (
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 mb-4 mt-4">
+              <div className="text-[10px] font-bold tracking-widest uppercase text-gray-400 mb-2 px-2">
+                プロジェクト
+              </div>
+              <ul className="space-y-0.5">
+                {projects.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSidebarOpen(false)}
+                      className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-white/60 truncate"
+                      title={p.title}
+                    >
+                      {p.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="mt-auto px-6">
             <div className="text-xs text-gray-400 font-light tracking-widest uppercase mb-2 ml-1">
@@ -625,6 +695,9 @@ export function DashboardClient() {
                   onGsdSync={handleGsdSync}
                   gsdSyncLoading={gsdSyncLoading}
                   gsdSyncError={gsdSyncError}
+                  onSelectFolder={handleSelectFolder}
+                  addProjectLoading={addProjectLoading}
+                  addProjectError={addProjectError}
                 />
                 {learningModal && (
                   <LearningModal

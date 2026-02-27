@@ -19,11 +19,20 @@ export interface Goal {
     isUrgent?: boolean
 }
 
+/** Phase ごとの PLAN/SUMMARY/VERIFICATION（Import 時の .planning から取得） */
+export interface PhaseContent {
+  plan?: string
+  summary?: string
+  verification?: string
+}
+
 export interface Project {
     id: string
     title: string
     goals: Goal[]
     systemStateMd?: string | null
+    planningPath?: string | null
+    phaseContents?: Record<string, PhaseContent> | null
     progress?: { total: number; done: number; percentage: number }
 }
 

@@ -1356,4 +1356,79 @@ program
         }
     })
 
+program
+    .command('doctor')
+    .description('.planning のフォーマットを検証し、必要に応じて修正を提案します')
+    .option('-p, --path <dir>', 'GSDプロジェクトのルートパス（.planning の親）')
+    .option('--fix', 'SUMMARY/VERIFICATION のセクションヘッダーを Markdown 形式に整形')
+    .action(async (opts) => {
+        const baseDir = opts.path ? path.resolve(opts.path) : process.cwd()
+        const planningDir = path.join(baseDir, '.planning')
+        const phasesDir = path.join(planningDir, 'phases')
+
+        if (!fs.existsSync(planningDir)) {
+            console.error(chalk.red('✗ .planning が見つかりません'))
+            console.error(chalk.dim('  GSDプロジェクトのルートで実行してください。'))
+            process.exit(1)
+        }
+
+        const issues = []
+        const fixes = []
+
+        if (!fs.existsSync(phasesDir)) {
+            issues.push({ type: 'error', msg: '.planning/phases がありません' })
+        } else {
+            const folders = fs.readdirSync(phasesDir)
+                .filter(f => fs.statSync(path.join(phasesDir, f)).isDirectory())
+                .sort()
+
+            for (const folder of folders) {
+                const phasePath = path.join(phasesDir, folder)
+                const files = fs.readdirSync(phasePath)
+
+                const hasPlan = files.some(f => f.endsWith('-PLAN.md'))
+                const hasSummary = files.some(f => f.endsWith('-SUMMARY.md'))
+                const hasVerification = files.some(f => f.endsWith('-VERIFICATION.md'))
+
+                if (!hasPlan) issues.push({ type: 'warn', msg: `${folder}: PLAN.md がありません` })
+
+                if (opts.fix && hasSummary) {
+                    const summaryFile = files.find(f => f.endsWith('-SUMMARY.md'))
+                    if (summaryFile) {
+                        const fp = path.join(phasePath, summaryFile)
+                        let content = fs.readFileSync(fp, 'utf8')
+                        const orig = content
+                        const sections = ['Completed Work', 'Architecture Decision', 'Next Steps', 'Key Decisions']
+                        for (const s of sections) {
+                            if (content.includes(s) && !content.includes(`## ${s}`)) {
+                                content = content.replace(new RegExp(`^(\\s*)(${s})\\s*$`, 'gm'), '$1## $2')
+                                fixes.push(`${folder}: SUMMARY の「${s}」を ## 形式に修正`)
+                            }
+                        }
+                        if (content !== orig) {
+                            fs.writeFileSync(fp, content)
+                        }
+                    }
+                }
+            }
+        }
+
+        console.log(chalk.bold.cyan('\n--- .planning Doctor ---\n'))
+        if (issues.length === 0 && fixes.length === 0 && !opts.fix) {
+            console.log(chalk.green('✓ 問題は検出されませんでした'))
+        } else {
+            issues.forEach(i => {
+                const prefix = i.type === 'error' ? chalk.red('✗') : chalk.yellow('⚠')
+                console.log(`${prefix} ${i.msg}`)
+            })
+            if (opts.fix && fixes.length > 0) {
+                console.log(chalk.green('\n修正しました:'))
+                fixes.forEach(f => console.log(chalk.dim('  ') + f))
+            } else if (fixes.length > 0) {
+                console.log(chalk.dim('\n--fix で上記を自動修正できます'))
+            }
+        }
+        console.log('')
+    })
+
 program.parse(process.argv)
